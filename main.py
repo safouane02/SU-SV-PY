@@ -1,7 +1,6 @@
 # github.com/safouane02 — session-restore
 import sys
 import os
-import subprocess
 import logging
 import tkinter as tk
 from tkinter import messagebox
@@ -18,61 +17,40 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-
-def detach_from_terminal():
-    if os.environ.get("SR_DETACHED") == "1":
-        log.debug("already detached, skipping")
-        return
-
-    if sys.executable.lower().endswith("pythonw.exe"):
-        log.debug("running under pythonw, no detach needed")
-        return
-
-    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-    if not os.path.isfile(pythonw):
-        log.warning("pythonw.exe not found at %s, continuing in current process", pythonw)
-        return
-
-    env = os.environ.copy()
-    env["SR_DETACHED"] = "1"
-
-    log.debug("relaunching under pythonw: %s", pythonw)
-    subprocess.Popen(
-        [pythonw] + sys.argv,
-        env=env,
-        close_fds=True,
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-    )
-    sys.exit(0)
+LOCK_FILE = os.path.join(os.environ.get("APPDATA", "."), "SessionRestore", "session_restore.lock")
 
 
-def is_already_running():
-    try:
-        import psutil
-        current = psutil.Process()
-        for proc in psutil.process_iter(["name", "pid"]):
-            if proc.info["name"] == current.name() and proc.pid != current.pid:
-                log.debug("duplicate instance found (pid %s), aborting", proc.pid)
-                return True
-        return False
-    except Exception as e:
-        log.error("is_already_running failed: %s", e)
-        return False
+def acquire_lock():
+    import atexit
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE) as f:
+                pid = int(f.read().strip())
+            import psutil
+            if psutil.pid_exists(pid):
+                log.debug("another instance is running (pid %s)", pid)
+                return False
+        except Exception:
+            pass
+
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+    atexit.register(lambda: os.remove(LOCK_FILE) if os.path.exists(LOCK_FILE) else None)
+    return True
 
 
 def main():
     log.info("startup — executable: %s", sys.executable)
 
-    detach_from_terminal()
-
-    if is_already_running():
+    if not acquire_lock():
         root = tk.Tk()
         root.withdraw()
         messagebox.showinfo("Session Restore", "Session Restore is already running in the background.")
         root.destroy()
         return
 
-    log.info("initializing components")
+    log.info("lock acquired, initializing")
 
     storage = StorageManager()
     snapshot_engine = SnapshotEngine(storage, interval_seconds=30)
