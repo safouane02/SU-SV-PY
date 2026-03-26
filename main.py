@@ -10,17 +10,22 @@ from ui import RestorePromptWindow, TrayIcon
 
 
 def detach_from_terminal():
-    # if already running under pythonw or inside a detached process, skip
+    if os.environ.get("SR_DETACHED") == "1":
+        return
+
     if sys.executable.lower().endswith("pythonw.exe"):
         return
 
-    # relaunch self under pythonw so the terminal is freed immediately
-    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     if not os.path.isfile(pythonw):
         return
 
+    env = os.environ.copy()
+    env["SR_DETACHED"] = "1"
+
     subprocess.Popen(
         [pythonw] + sys.argv,
+        env=env,
         close_fds=True,
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
     )
