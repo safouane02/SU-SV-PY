@@ -1,9 +1,30 @@
 # github.com/safouane02 — session-restore
+import sys
+import os
+import subprocess
 import tkinter as tk
 from tkinter import messagebox
 
 from core import StorageManager, SnapshotEngine, RestoreEngine
 from ui import RestorePromptWindow, TrayIcon
+
+
+def detach_from_terminal():
+    # if already running under pythonw or inside a detached process, skip
+    if sys.executable.lower().endswith("pythonw.exe"):
+        return
+
+    # relaunch self under pythonw so the terminal is freed immediately
+    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+    if not os.path.isfile(pythonw):
+        return
+
+    subprocess.Popen(
+        [pythonw] + sys.argv,
+        close_fds=True,
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+    sys.exit(0)
 
 
 def is_already_running():
@@ -19,6 +40,8 @@ def is_already_running():
 
 
 def main():
+    detach_from_terminal()
+
     if is_already_running():
         root = tk.Tk()
         root.withdraw()
